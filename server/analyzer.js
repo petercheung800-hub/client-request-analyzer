@@ -109,13 +109,6 @@ ${message}${countryContext}
     "serverReasoning": "服务器选型理由（包括配置建议、预估流量、扩展性等）"
   },
   "timeline": {
-    "phases": [
-      {
-        "name": "阶段名称",
-        "duration": "预计时间（如：2周）",
-        "tasks": ["任务1", "任务2", ...]
-      }
-    ],
     "totalDuration": "总开发周期（如：8-12周）"
   },
   "risks": [
@@ -153,9 +146,16 @@ ${message}${countryContext}
       "development": "开发成本说明",
       "testing": "测试成本说明",
       "deployment": "部署成本说明",
-      "server": "服务器成本说明（包括服务器租赁/购买、带宽、存储等具体费用，如：阿里云ECS 2核4G ¥200/月，CDN流量费 ¥0.2/GB）",
+      "server": "服务器成本说明（包括服务器租赁/购买、带宽、存储等具体费用，如：AWS EC2 t3.medium $50-80/月，CDN流量费 $0.15-0.25/GB）",
       "maintenance": "维护成本说明（可选）"
     },
+    "costTable": [
+      {
+        "role": "项目角色（如：前端开发工程师）",
+        "duration": "工作时长（如：20天）",
+        "tasks": "工作内容（详细描述）"
+      }
+    ],
     "factors": ["影响报价的因素1", "因素2", ...]
   }
 }
