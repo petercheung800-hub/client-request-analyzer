@@ -583,6 +583,31 @@
   gap: 1.5rem;
 }
 
+.pricing-timeline {
+  text-align: center;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+  border-radius: 12px;
+  color: white;
+  margin-bottom: 1rem;
+}
+
+.pricing-timeline h4 {
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.pricing-timeline .duration-badge {
+  font-size: 1.8rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 0.8rem 1.5rem;
+  border-radius: 8px;
+  display: inline-block;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
 .pricing-estimation {
   text-align: center;
   padding: 1.5rem;
@@ -611,6 +636,133 @@
   font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+.cost-table-container {
+  overflow-x: auto;
+  margin: 1rem 0;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  font-size: 0.9rem;
+}
+
+.cost-table th {
+  background: #f8fafc;
+  color: #374151;
+  font-weight: 600;
+  padding: 0.875rem 1rem;
+  text-align: left;
+  border-bottom: 2px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.cost-table td {
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid #f3f4f6;
+  vertical-align: top;
+  line-height: 1.5;
+}
+
+.cost-table tr:last-child td {
+  border-bottom: none;
+}
+
+.cost-table tr:hover {
+  background: #f9fafb;
+}
+
+.cost-table tr:nth-child(even) {
+  background: #fafbfc;
+}
+
+.cost-table tr:nth-child(even):hover {
+  background: #f3f4f6;
+}
+
+/* 表格单元格样式优化 */
+.cost-table td:first-child {
+  font-weight: 600;
+  color: #1f2937;
+  min-width: 120px;
+}
+
+.cost-table td:nth-child(2) {
+  color: #2563eb;
+  font-weight: 500;
+  white-space: nowrap;
+  min-width: 100px;
+}
+
+.cost-table td:nth-child(3) {
+  width: 120px;
+}
+
+.cost-table td:last-child {
+  max-width: 300px;
+}
+
+/* 小时单价输入框样式 */
+.rate-input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  transition: border-color 0.15s;
+}
+
+.rate-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* 成本计算区域样式 */
+.cost-calculation {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #f9fafb;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.calculate-btn {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.calculate-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.calculate-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.total-cost-display {
+  padding: 0.75rem 1rem;
+  background: #ecfdf5;
+  border: 1px solid #d1fae5;
+  border-radius: 6px;
+  color: #065f46;
+  font-size: 1rem;
 }
 
 .breakdown-grid {
@@ -883,6 +1035,32 @@
   .breakdown-grid,
   .roles-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* 移动端表格样式 */
+  .cost-table-container {
+    margin: 0 -1rem;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  .cost-table {
+    font-size: 0.8rem;
+  }
+
+  .cost-table th,
+  .cost-table td {
+    padding: 0.75rem 0.5rem;
+  }
+
+  .cost-table th:first-child,
+  .cost-table td:first-child {
+    min-width: 100px;
+  }
+
+  .cost-table td:last-child {
+    max-width: 200px;
   }
 }
 

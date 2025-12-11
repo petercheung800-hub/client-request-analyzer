@@ -17,8 +17,37 @@ function AnalysisResult({ analysis, onFollowUpChange }) {
   const notesTextareaRef = useRef(null)
   const [activeFormats, setActiveFormats] = useState({})
   const originalNotesRef = useRef('')
+  const [rates, setRates] = useState({});
+  const [totalCost, setTotalCost] = useState(null);
   
-  // 使用数据库中的 isFollowUp 值，如果没有则根据可行性分析判断
+  // 处理单价变化
+  const handleRateChange = (index, value) => {
+    setRates(prev => ({
+      ...prev,
+      [index]: value
+    }));
+  };
+  
+  // 计算总成本
+  const calculateTotalCost = () => {
+    let total = 0;
+    data.pricing.costTable.forEach((item, idx) => {
+      if (rates[idx]) {
+        // 尝试从工作时长中提取天数
+        const durationMatch = item.duration.match(/(\d+)/);
+        if (durationMatch) {
+          const days = parseInt(durationMatch[1]);
+          // 将天数转换为小时数（假设每天工作8小时）
+          const hours = days * 8;
+          const hourlyRate = parseFloat(rates[idx]);
+          total += hours * hourlyRate;
+        }
+      }
+    });
+    setTotalCost(total);
+  };
+    
+    // 使用数据库中的 isFollowUp 值，如果没有则根据可行性分析判断
   const getInitialFollowUpStatus = () => {
     // 优先使用数据库中的值
     if (analysis?.isFollowUp !== undefined) {
@@ -866,37 +895,7 @@ function AnalysisResult({ analysis, onFollowUpChange }) {
         </Section>
       )}
 
-      {data.timeline && (
-        <Section 
-          title="开发周期和步骤"
-          onAskQuestion={() => openQuestionDialog('开发周期和步骤')}
-        >
-          <div className="timeline-content">
-            {data.timeline.phases && data.timeline.phases.map((phase, idx) => (
-              <div key={idx} className="phase-item">
-                <div className="phase-header">
-                  <span className="phase-number">{idx + 1}</span>
-                  <h4>{phase.name}</h4>
-                  <span className="phase-duration">{phase.duration}</span>
-                </div>
-                {phase.tasks && phase.tasks.length > 0 && (
-                  <ul className="phase-tasks">
-                    {phase.tasks.map((task, taskIdx) => (
-                      <li key={taskIdx}>{task}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
-            {data.timeline.totalDuration && (
-              <div className="total-duration">
-                <strong>总开发周期：</strong>
-                <span className="duration-badge">{data.timeline.totalDuration}</span>
-              </div>
-            )}
-          </div>
-        </Section>
-      )}
+      
 
       {data.risks && data.risks.length > 0 && (
         <Section 
@@ -994,30 +993,68 @@ function AnalysisResult({ analysis, onFollowUpChange }) {
           onAskQuestion={() => openQuestionDialog('报价分析')}
         >
           <div className="pricing-content">
-            {data.pricing.estimation && (
-              <div className="pricing-estimation">
-                <h4>报价估算</h4>
-                <div className="price-badge">{data.pricing.estimation}</div>
+            {data.timeline && data.timeline.totalDuration && (
+              <div className="pricing-timeline">
+                <h4>总开发周期</h4>
+                <div className="duration-badge">{data.timeline.totalDuration}</div>
+              </div>
+            )}
+            {data.pricing.costTable && data.pricing.costTable.length > 0 && (
+              <div className="pricing-breakdown">
+                <h4>人力成本明细</h4>
+                <div className="cost-table-container">
+                  <table className="cost-table">
+                    <thead>
+                      <tr>
+                        <th>项目角色</th>
+                        <th>工作时长</th>
+                        <th>单价 ($/小时)</th>
+                        <th>工作内容</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.pricing.costTable.map((item, idx) => (
+                        <tr key={idx}>
+                          <td>{item.role}</td>
+                          <td>{item.duration}</td>
+                          <td>
+                            <input
+                                type="number"
+                                className="rate-input"
+                                value={rates[idx] || ''}
+                                onChange={(e) => handleRateChange(idx, e.target.value)}
+                                min="0"
+                                step="1"
+                              />
+                          </td>
+                          <td>{item.tasks}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="cost-calculation">
+                    <button 
+                      className="calculate-btn"
+                      onClick={calculateTotalCost}
+                      disabled={Object.keys(rates).length === 0}
+                    >
+                      计算总报价
+                    </button>
+                    {totalCost !== null && (
+                      <div className="total-cost-display">
+                        <strong>总报价: ${totalCost.toLocaleString()}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
             {data.pricing.breakdown && (
               <div className="pricing-breakdown">
-                <h4>成本明细</h4>
+                <h4>其他成本</h4>
                 <ul>
-                  {data.pricing.breakdown.development && (
-                    <li><strong>开发成本：</strong>{data.pricing.breakdown.development}</li>
-                  )}
-                  {data.pricing.breakdown.testing && (
-                    <li><strong>测试成本：</strong>{data.pricing.breakdown.testing}</li>
-                  )}
-                  {data.pricing.breakdown.deployment && (
-                    <li><strong>部署成本：</strong>{data.pricing.breakdown.deployment}</li>
-                  )}
                   {data.pricing.breakdown.server && (
                     <li><strong>服务器成本：</strong>{data.pricing.breakdown.server}</li>
-                  )}
-                  {data.pricing.breakdown.maintenance && (
-                    <li><strong>维护成本：</strong>{data.pricing.breakdown.maintenance}</li>
                   )}
                 </ul>
               </div>
