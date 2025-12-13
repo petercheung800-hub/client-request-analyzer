@@ -20,6 +20,28 @@ export function initDatabase() {
     )
   `);
   
+  // 创建机会表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS opportunities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      opportunityId TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      clientName TEXT,
+      country TEXT,
+      description TEXT,
+      status TEXT,
+      priority TEXT,
+      postedDate TEXT,
+      lastUpdated TEXT NOT NULL,
+      sourceUrl TEXT,
+      isProcessed INTEGER DEFAULT 0,
+      analysisId INTEGER,
+      createdAt TEXT NOT NULL,
+      processedAt TEXT,
+      FOREIGN KEY (analysisId) REFERENCES analyses(id)
+    )
+  `);
+  
   // 检查并添加列（如果不存在）
   try {
     const tableInfo = db.prepare("PRAGMA table_info(analyses)").all();
@@ -173,5 +195,93 @@ export function deleteAnalysesByClientName(clientName) {
   const result = stmt.run(clientName);
   
   return result.changes;
+}
+
+// 机会相关数据库操作函数
+export function saveOpportunity(opportunity) {
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO opportunities (
+      opportunityId, title, clientName, country, description,
+      status, priority, postedDate, lastUpdated, sourceUrl,
+      isProcessed, createdAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  
+  const result = stmt.run(
+    opportunity.opportunityId,
+    opportunity.title,
+    opportunity.clientName || '',
+    opportunity.country || '',
+    opportunity.description || '',
+    opportunity.status || '',
+    opportunity.priority || '',
+    opportunity.postedDate || '',
+    opportunity.lastUpdated,
+    opportunity.sourceUrl || '',
+    opportunity.isProcessed || 0,
+    opportunity.createdAt || new Date().toISOString()
+  );
+  
+  return result.lastInsertRowid;
+}
+
+export function getOpportunities(limit = 50) {
+  const stmt = db.prepare(`
+    SELECT o.*, a.clientName as analysisClientName, a.country as analysisCountry
+    FROM opportunities o
+    LEFT JOIN analyses a ON o.analysisId = a.id
+    ORDER BY o.lastUpdated DESC
+    LIMIT ?
+  `);
+  const rows = stmt.all(limit);
+  
+  return rows.map(row => ({
+    ...row,
+    isProcessed: row.isProcessed === 1
+  }));
+}
+
+export function getUnprocessedOpportunities() {
+  const stmt = db.prepare(`
+    SELECT * FROM opportunities WHERE isProcessed = 0
+    ORDER BY lastUpdated DESC
+  `);
+  const rows = stmt.all();
+  
+  return rows.map(row => ({
+    ...row,
+    isProcessed: row.isProcessed === 1
+  }));
+}
+
+export function markOpportunityProcessed(opportunityId, analysisId) {
+  const stmt = db.prepare(`
+    UPDATE opportunities SET
+      isProcessed = 1,
+      analysisId = ?,
+      processedAt = ?
+    WHERE id = ?
+  `);
+  const result = stmt.run(analysisId, new Date().toISOString(), opportunityId);
+  return result.changes > 0;
+}
+
+export function getOpportunityById(id) {
+  const stmt = db.prepare('SELECT * FROM opportunities WHERE id = ?');
+  const row = stmt.get(id);
+  
+  if (!row) return null;
+  
+  return {
+    ...row,
+    isProcessed: row.isProcessed === 1
+  };
+}
+
+export function deleteOpportunity(id) {
+  const stmt = db.prepare('DELETE FROM opportunities WHERE id = ?');
+  const result = stmt.run(id);
+  
+  return result.changes > 0;
 }
 

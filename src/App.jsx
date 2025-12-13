@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import './App.css'
 import RequestInput from './components/RequestInput'
 import HistoryPanel from './components/HistoryPanel'
+import OpportunityPanel from './components/OpportunityPanel'
 import { playNotificationSound } from './utils/sound'
 
 function App() {
@@ -9,6 +10,7 @@ function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [history, setHistory] = useState([])
   const [showHistory, setShowHistory] = useState(false)
+  const [showOpportunities, setShowOpportunities] = useState(false)
   const [resetKey, setResetKey] = useState(0)
 
   useEffect(() => {
@@ -162,6 +164,12 @@ function App() {
           >
             {showHistory ? '隐藏历史' : '查看历史'}
           </button>
+          <button 
+            className="opportunity-toggle"
+            onClick={() => setShowOpportunities(!showOpportunities)}
+          >
+            {showOpportunities ? '隐藏机会' : '机会管理'}
+          </button>
         </div>
       </header>
 
@@ -173,6 +181,10 @@ function App() {
             onDelete={handleDeleteHistory}
             currentAnalysisId={currentAnalysis?.id}
           />
+        )}
+
+        {showOpportunities && (
+          <OpportunityPanel />
         )}
 
         <main className="main-content">

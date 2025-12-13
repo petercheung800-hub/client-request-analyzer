@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { analyzeRequest } from './analyzer.js';
-import { initDatabase, saveAnalysis, getAnalyses, getAnalysisById, deleteAnalysis, deleteAnalysesByClientName, getAnalysisByClientName, updateFollowUpStatus, updateSavedQAs, updateNotes } from './database.js';
+import { initDatabase, saveAnalysis, getAnalyses, getAnalysisById, deleteAnalysis, deleteAnalysesByClientName, getAnalysisByClientName, updateFollowUpStatus, updateSavedQAs, updateNotes, saveOpportunity, getOpportunities, getUnprocessedOpportunities, markOpportunityProcessed, getOpportunityById, deleteOpportunity } from './database.js';
 
 dotenv.config();
 
@@ -187,6 +187,88 @@ app.put('/api/analyses/:id/qas', (req, res) => {
   }
 });
 
+// 手动触发数据抓取
+import { spawn } from 'child_process';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// 在ES模块中获取__dirname的等效值
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+app.post('/api/scrape/trigger', async (req, res) => {
+  try {
+    console.log('收到手动抓取请求');
+    
+    // 构建scraper-service的路径
+    const scraperServicePath = path.join(__dirname, '..', 'scraper-service');
+    const runScriptPath = path.join(scraperServicePath, 'run.py');
+    
+    console.log(`正在执行抓取脚本: ${runScriptPath}`);
+    
+    // 使用Python执行一次抓取任务
+    const pythonProcess = spawn('python3', [runScriptPath, '--mode', 'once'], {
+      cwd: scraperServicePath,
+      env: process.env
+    });
+    
+    let stdoutData = '';
+    let stderrData = '';
+    
+    pythonProcess.stdout.on('data', (data) => {
+      stdoutData += data.toString();
+      console.log(`抓取进程stdout: ${data}`);
+    });
+    
+    pythonProcess.stderr.on('data', (data) => {
+      stderrData += data.toString();
+      console.error(`抓取进程stderr: ${data}`);
+    });
+    
+    pythonProcess.on('close', (code) => {
+      console.log(`抓取进程退出，退出码: ${code}`);
+      
+      if (code === 0) {
+        res.json({ 
+          success: true, 
+          message: '数据抓取完成',
+          stdout: stdoutData,
+          stderr: stderrData
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: '数据抓取失败',
+          error: `抓取进程异常退出，退出码: ${code}`,
+          stdout: stdoutData,
+          stderr: stderrData
+        });
+      }
+    });
+    
+    // 设置超时处理
+    setTimeout(() => {
+      if (pythonProcess.exitCode === null) {
+        pythonProcess.kill();
+        console.error('抓取进程超时，已被终止');
+        res.status(500).json({ 
+          success: false, 
+          message: '数据抓取超时',
+          error: '抓取过程超过300秒，已被终止'
+        });
+      }
+    }, 300000); // 5分钟超时
+    
+  } catch (error) {
+    console.error('手动抓取错误:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: '手动抓取失败', 
+      error: error.message 
+    });
+  }
+});
+
 // 针对特定模块提问
 app.post('/api/ask-question', async (req, res) => {
   try {
@@ -267,5 +349,109 @@ ${question}
 
 app.listen(PORT, () => {
   console.log(`服务器运行在 http://localhost:${PORT}`);
+});
+
+// 机会相关API端点
+
+// 获取机会列表
+app.get('/api/opportunities', (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const opportunities = getOpportunities(limit);
+    res.json(opportunities);
+  } catch (error) {
+    console.error('获取机会列表错误:', error);
+    res.status(500).json({ error: '获取机会列表失败' });
+  }
+});
+
+// 获取未处理的机会
+app.get('/api/opportunities/unprocessed', (req, res) => {
+  try {
+    const opportunities = getUnprocessedOpportunities();
+    res.json(opportunities);
+  } catch (error) {
+    console.error('获取未处理机会错误:', error);
+    res.status(500).json({ error: '获取未处理机会失败' });
+  }
+});
+
+// 获取单个机会
+app.get('/api/opportunities/:id', (req, res) => {
+  try {
+    const opportunity = getOpportunityById(parseInt(req.params.id));
+    if (!opportunity) {
+      return res.status(404).json({ error: '机会未找到' });
+    }
+    res.json(opportunity);
+  } catch (error) {
+    console.error('获取机会错误:', error);
+    res.status(500).json({ error: '获取机会失败' });
+  }
+});
+
+// 处理机会（创建分析记录）
+app.post('/api/opportunities/:id/process', async (req, res) => {
+  try {
+    const opportunityId = parseInt(req.params.id);
+    const { autoAnalyze = true } = req.body;
+    
+    // 获取机会信息
+    const opportunity = getOpportunityById(opportunityId);
+    
+    if (!opportunity) {
+      return res.status(404).json({ error: '机会未找到' });
+    }
+    
+    let analysisId = null;
+    
+    if (autoAnalyze) {
+      // 自动分析机会
+      const analysis = await analyzeRequest(
+        opportunity.description || opportunity.title,
+        opportunity.clientName || '未知客户',
+        opportunity.country || ''
+      );
+      
+      // 保存分析结果
+      analysisId = saveAnalysis({
+        clientName: opportunity.clientName || '未知客户',
+        country: opportunity.country || '',
+        message: opportunity.description || opportunity.title,
+        analysis,
+        createdAt: opportunity.createdAt
+      });
+    }
+    
+    // 标记机会为已处理
+    const success = markOpportunityProcessed(opportunityId, analysisId);
+    
+    if (!success) {
+      return res.status(500).json({ error: '标记机会处理状态失败' });
+    }
+    
+    res.json({ 
+      success: true, 
+      analysisId,
+      message: autoAnalyze ? '机会已处理并分析' : '机会已标记为已处理'
+    });
+  } catch (error) {
+    console.error('处理机会错误:', error);
+    res.status(500).json({ error: '处理机会失败', message: error.message });
+  }
+});
+
+// 删除机会
+app.delete('/api/opportunities/:id', (req, res) => {
+  try {
+    const success = deleteOpportunity(parseInt(req.params.id));
+    if (!success) {
+      return res.status(404).json({ error: '机会未找到' });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('删除机会错误:', error);
+    res.status(500).json({ error: '删除机会失败' });
+  }
 });
 

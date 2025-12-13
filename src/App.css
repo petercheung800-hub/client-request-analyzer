@@ -35,7 +35,8 @@
 }
 
 .new-analysis-button,
-.history-toggle {
+.history-toggle,
+.opportunity-toggle {
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   color: white;
   border: none;
@@ -52,7 +53,8 @@
 }
 
 .new-analysis-button::before,
-.history-toggle::before {
+.history-toggle::before,
+.opportunity-toggle::before {
   content: '';
   position: absolute;
   top: 0;
@@ -64,12 +66,14 @@
 }
 
 .new-analysis-button:hover::before,
-.history-toggle:hover::before {
+.history-toggle:hover::before,
+.opportunity-toggle:hover::before {
   left: 100%;
 }
 
 .new-analysis-button:hover,
-.history-toggle:hover {
+.history-toggle:hover,
+.opportunity-toggle:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
 }
@@ -108,6 +112,7 @@
 
   .new-analysis-button,
   .history-toggle,
+  .opportunity-toggle,
   .theme-toggle {
     width: 100%;
   }
