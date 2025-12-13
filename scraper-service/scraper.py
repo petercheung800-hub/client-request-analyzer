@@ -497,14 +497,27 @@ class OpportunityScraper:
                 rows = self.driver.find_elements(By.CSS_SELECTOR, "tr[ng-repeat], tr.ng-scope")
                 self.logger.info(f"备用选择器2找到 {len(rows)} 行数据")
             
-            for i, row in enumerate(rows):
+            # 保存列表页面HTML用于调试
+            try:
+                html_path = f"opportunity_list_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+                with open(html_path, 'w', encoding='utf-8') as f:
+                    f.write(self.driver.page_source)
+                self.logger.info(f"机会列表页面HTML已保存: {html_path}")
+            except Exception as debug_error:
+                self.logger.warning(f"保存列表页面HTML时出错: {str(debug_error)}")
+            
+            # 记录当前处理到的行索引
+            current_row_index = 0
+            while current_row_index < len(rows):
+                row = rows[current_row_index]
                 try:
-                    self.logger.debug(f"正在解析第 {i+1} 行数据...")
+                    self.logger.debug(f"正在解析第 {current_row_index+1} 行数据...")
                     # 提取机会基本信息
                     opportunity_data = self.extract_opportunity_data(row)
                     
                     if not opportunity_data:
-                        self.logger.debug(f"第 {i+1} 行数据提取失败，跳过")
+                        self.logger.debug(f"第 {current_row_index+1} 行数据提取失败，跳过")
+                        current_row_index += 1
                         continue
                     
                     # 检查Account Owner字段 - 如果不为空则跳过
@@ -512,6 +525,7 @@ class OpportunityScraper:
                     if account_owner:
                         self.logger.debug(f"跳过已分配机会: {opportunity_data.get('opportunityId')} (Account Owner: {account_owner})")
                         skipped_count += 1
+                        current_row_index += 1
                         continue
                     
                     # 检查最后更新时间是否在指定时间范围内
@@ -519,7 +533,48 @@ class OpportunityScraper:
                     
                     if not last_updated or last_updated < time_threshold:
                         self.logger.debug(f"机会 {opportunity_data.get('opportunityId')} 不在时间范围内，跳过")
+                        current_row_index += 1
                         continue
+                    
+                    # 获取机会详情
+                    self.logger.info(f"正在抓取机会详情: {opportunity_data.get('opportunityId')}")
+                    
+                    # 获取当前行中的链接元素
+                    link_element = row.find_element(By.CSS_SELECTOR, "td.item-opportunitylist-name a")
+                    
+                    # 点击链接进入详情页
+                    try:
+                        # 使用JavaScript点击链接，避免元素被覆盖的问题
+                        self.driver.execute_script("arguments[0].click();", link_element)
+                        self.logger.info(f"已点击机会链接: {opportunity_data.get('opportunityId')}")
+                        
+                        # 等待页面加载
+                        time.sleep(3)
+                        
+                        # 抓取机会详情
+                        details = self.extract_opportunity_details(None)  # 不需要URL，因为我们已经在详情页了
+                        
+                    except Exception as click_error:
+                        self.logger.error(f"点击机会链接失败: {str(click_error)}")
+                        details = {
+                            'description': '',
+                            'customerMessages': [],
+                            'notes': []
+                        }
+                    
+                    # 返回机会列表页面并重新获取表格元素
+                    try:
+                        self.driver.get(self.base_url)
+                        WebDriverWait(self.driver, 15).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "#oppListTable tbody tr[ng-repeat]"))
+                        )
+                        # 重新获取表格行，因为之前的元素已经失效
+                        rows = self.driver.find_elements(By.CSS_SELECTOR, "#oppListTable tbody tr[ng-repeat]")
+                        self.logger.info(f"返回列表页面，重新获取到 {len(rows)} 行数据")
+                    except Exception as return_error:
+                        self.logger.error(f"返回列表页面失败: {str(return_error)}")
+                        # 如果返回失败，跳过剩余的机会
+                        break
                     
                     # 构建机会对象
                     opportunity = {
@@ -527,25 +582,31 @@ class OpportunityScraper:
                         'title': opportunity_data.get('title', ''),
                         'clientName': opportunity_data.get('clientName', ''),
                         'country': opportunity_data.get('country', ''),
-                        'description': opportunity_data.get('description', ''),
+                        'description': details.get('description', ''),
                         'status': opportunity_data.get('status', ''),
-                        'priority': opportunity_data.get('priority', ''),
+                        'priority': details.get('priority', opportunity_data.get('priority', '')),
                         'postedDate': opportunity_data.get('postedDate', ''),
                         'lastUpdated': opportunity_data.get('lastUpdated', ''),
                         'sourceUrl': opportunity_data.get('sourceUrl', ''),
                         'leadSource': opportunity_data.get('leadSource', ''),
                         'territoryManager': opportunity_data.get('territoryManager', ''),
                         'salesManager': opportunity_data.get('salesManager', ''),
-                        'accountOwner': opportunity_data.get('accountOwner', '')
+                        'accountOwner': opportunity_data.get('accountOwner', ''),
+                        'customerMessages': details.get('customerMessages', []),
+                        'notes': details.get('notes', [])
                     }
                     
                     opportunities.append(opportunity)
                     self.logger.info(f"发现未分配机会: {opportunity['opportunityId']} - {opportunity['title']}")
                     
                 except Exception as e:
-                    self.logger.warning(f"解析第 {i+1} 行机会数据失败: {str(e)}")
+                    self.logger.warning(f"解析第 {current_row_index+1} 行机会数据失败: {str(e)}")
                     self.logger.exception("详细错误信息:")
+                    current_row_index += 1
                     continue
+                
+                # 成功处理当前行，移动到下一行
+                current_row_index += 1
             
             self.logger.info(f"共找到{len(opportunities)}个未分配且最近更新的机会，跳过{skipped_count}个已分配机会")
             return opportunities
@@ -555,6 +616,316 @@ class OpportunityScraper:
             self.logger.exception("详细错误信息:")
             return []
     
+    def extract_opportunity_details(self, opportunity_url=None):
+        """抓取机会详情，包括客户留言和Notes"""
+        try:
+            self.logger.info("正在抓取机会详情...")
+            
+            # 不再需要访问URL，因为我们已经在详情页了
+            # 等待页面加载
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            
+            # 额外等待Angular应用加载
+            time.sleep(3)
+            
+            # 保存页面截图用于调试
+            try:
+                screenshot_path = f"opportunity_detail_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                self.driver.save_screenshot(screenshot_path)
+                self.logger.info(f"机会详情页截图已保存: {screenshot_path}")
+                
+                # 保存页面HTML用于调试
+                html_path = f"opportunity_detail_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+                with open(html_path, 'w', encoding='utf-8') as f:
+                    f.write(self.driver.page_source)
+                self.logger.info(f"机会详情页HTML已保存: {html_path}")
+            except Exception as debug_error:
+                self.logger.warning(f"保存调试信息时出错: {str(debug_error)}")
+            
+            # 初始化详情数据
+            details = {
+                'description': '',
+                'customerMessages': [],
+                'notes': []
+            }
+            
+            # 1. 抓取机会描述
+            try:
+                # 尝试多种可能的选择器
+                description_selectors = [
+                    "textarea#Description",
+                    "textarea[name='Description']",
+                    "textarea[ng-model='editItem.Description']",
+                    "div.description",
+                    "div.opportunity-description",
+                    ".description-field",
+                    "#description"
+                ]
+                
+                description = ''
+                for selector in description_selectors:
+                    try:
+                        desc_element = self.driver.find_element(By.CSS_SELECTOR, selector)
+                        description = desc_element.get_attribute("value") or desc_element.text.strip()
+                        if description:
+                            self.logger.debug(f"使用选择器 {selector} 找到描述: {description[:50]}...")
+                            break
+                    except:
+                        continue
+                
+                details['description'] = description
+                self.logger.info(f"提取到机会描述: {description[:100] if description else '无'}")
+                
+            except Exception as e:
+                self.logger.warning(f"提取机会描述失败: {str(e)}")
+            
+            # 2. 抓取客户留言
+            try:
+                # 查找客户留言区域 - 尝试更广泛的选择器
+                message_selectors = [
+                    "p[ng-bind-html='note.Desc']",
+                    "div.customer-messages",
+                    "div.messages",
+                    "div.comment-section",
+                    ".customer-feedback",
+                    ".message-list",
+                    "div[ng-if*='Message']",
+                    "div[ng-if*='Comment']",
+                    "div[contains(@class, 'message')]",
+                    "div[contains(@class, 'comment')]",
+                    "div[contains(@class, 'feedback')]",
+                    "table tr td:contains('Message')",
+                    "table tr td:contains('Comment')",
+                    "table tr td:contains('客户留言')",
+                    "table tr td:contains('留言')",
+                    "*[contains(text(), 'Message')]",
+                    "*[contains(text(), 'Comment')]",
+                    "*[contains(text(), '客户留言')]",
+                    "*[contains(text(), '留言')]"
+                ]
+                
+                messages = []
+                for selector in message_selectors:
+                    try:
+                        # 使用XPath查找包含特定文本的元素
+                        if ":contains(" in selector or "contains(" in selector:
+                            # 对于XPath选择器，使用find_elements_by_xpath
+                            if selector.startswith("*"):
+                                xpath_selector = selector.replace("*", "//")
+                                message_elements = self.driver.find_elements(By.XPATH, xpath_selector)
+                            else:
+                                message_elements = self.driver.find_elements(By.XPATH, selector)
+                        else:
+                            # 对于CSS选择器，使用find_elements
+                            message_elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        
+                        if message_elements:
+                            self.logger.debug(f"使用选择器 {selector} 找到 {len(message_elements)} 个潜在消息元素")
+                            
+                            # 尝试从这些元素中提取消息
+                            for element in message_elements:
+                                try:
+                                    content = element.text.strip()
+                                    
+                                    if content and len(content) > 5:  # 过滤掉太短的内容
+                                        messages.append({
+                                            'content': content,
+                                            'timestamp': '',
+                                            'sender': ''
+                                        })
+                                except:
+                                    continue
+                            
+                            if messages:
+                                self.logger.debug(f"使用选择器 {selector} 提取到 {len(messages)} 条客户留言")
+                                break
+                    except Exception as selector_error:
+                        self.logger.debug(f"选择器 {selector} 失败: {str(selector_error)}")
+                        continue
+                
+                # 如果仍然没有找到消息，尝试更通用的方法
+                if not messages:
+                    self.logger.info("尝试使用通用方法查找客户留言...")
+                    # 查找页面中所有可能包含消息的文本块
+                    all_text_elements = self.driver.find_elements(By.XPATH, "//div[contains(text())][string-length(text()) > 20]")
+                    
+                    for element in all_text_elements:
+                        try:
+                            text = element.text.strip()
+                            # 过滤掉明显不是消息的文本
+                            if (text and len(text) > 20 and 
+                                not text.lower().startswith('save') and 
+                                not text.lower().startswith('cancel') and
+                                not text.lower().startswith('submit') and
+                                not text.lower().startswith('delete') and
+                                not 'email' in text.lower() and
+                                not 'phone' in text.lower() and
+                                not 'address' in text.lower()):
+                                messages.append({
+                                    'content': text,
+                                    'timestamp': '',
+                                    'sender': ''
+                                })
+                        except:
+                            continue
+                
+                details['customerMessages'] = messages[:5]  # 最多保存5条消息
+                self.logger.info(f"提取到 {len(messages)} 条客户留言")
+                
+            except Exception as e:
+                self.logger.warning(f"提取客户留言失败: {str(e)}")
+            
+            # 3. 抓取Notes
+            try:
+                # 查找Notes区域 - 尝试更广泛的选择器
+                notes_selectors = [
+                    "div.smart-timeline-content",
+                    "div.notes-section",
+                    "div.opportunity-notes",
+                    "div.notes-list",
+                    ".notes-container",
+                    "#notes",
+                    "div[ng-if*='Note']",
+                    "div[ng-if*='Notes']",
+                    "div[contains(@class, 'note')]",
+                    "table tr td:contains('Note')",
+                    "table tr td:contains('Notes')",
+                    "table tr td:contains('备注')",
+                    "table tr td:contains('笔记')",
+                    "*[contains(text(), 'Note')]",
+                    "*[contains(text(), 'Notes')]",
+                    "*[contains(text(), '备注')]",
+                    "*[contains(text(), '笔记')]"
+                ]
+                
+                notes = []
+                for selector in notes_selectors:
+                    try:
+                        # 使用XPath查找包含特定文本的元素
+                        if ":contains(" in selector or "contains(" in selector:
+                            # 对于XPath选择器，使用find_elements_by_xpath
+                            if selector.startswith("*"):
+                                xpath_selector = selector.replace("*", "//")
+                                notes_elements = self.driver.find_elements(By.XPATH, xpath_selector)
+                            else:
+                                notes_elements = self.driver.find_elements(By.XPATH, selector)
+                        else:
+                            # 对于CSS选择器，使用find_elements
+                            notes_elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        
+                        if notes_elements:
+                            self.logger.debug(f"使用选择器 {selector} 找到 {len(notes_elements)} 个潜在Notes元素")
+                            
+                            # 尝试从这些元素中提取Notes
+                            for element in notes_elements:
+                                try:
+                                    # 查找Note内容和作者
+                                    content_element = element.find_element(By.CSS_SELECTOR, "p[ng-bind-html='note.Desc']")
+                                    author_element = element.find_element(By.CSS_SELECTOR, "span[ng-bind='note.CreateUser']")
+                                    
+                                    content = content_element.text.strip()
+                                    author = author_element.text.strip()
+                                    
+                                    if content and len(content) > 5:  # 过滤掉太短的内容
+                                        notes.append({
+                                            'content': content,
+                                            'timestamp': '',
+                                            'author': author
+                                        })
+                                except:
+                                    # 如果找不到特定的子元素，尝试获取整个元素的文本
+                                    try:
+                                        content = element.text.strip()
+                                        if content and len(content) > 5:
+                                            notes.append({
+                                                'content': content,
+                                                'timestamp': '',
+                                                'author': ''
+                                            })
+                                    except:
+                                        continue
+                            
+                            if notes:
+                                self.logger.debug(f"使用选择器 {selector} 提取到 {len(notes)} 条Notes")
+                                break
+                    except Exception as selector_error:
+                        self.logger.debug(f"选择器 {selector} 失败: {str(selector_error)}")
+                        continue
+                
+                # 如果仍然没有找到Notes，尝试更通用的方法
+                if not notes:
+                    self.logger.info("尝试使用通用方法查找Notes...")
+                    # 查找页面中所有可能包含Notes的文本块
+                    all_text_elements = self.driver.find_elements(By.XPATH, "//div[contains(text())][string-length(text()) > 20]")
+                    
+                    for element in all_text_elements:
+                        try:
+                            text = element.text.strip()
+                            # 过滤掉明显不是Notes的文本
+                            if (text and len(text) > 20 and 
+                                not text.lower().startswith('save') and 
+                                not text.lower().startswith('cancel') and
+                                not text.lower().startswith('submit') and
+                                not text.lower().startswith('delete') and
+                                not 'email' in text.lower() and
+                                not 'phone' in text.lower() and
+                                not 'address' in text.lower()):
+                                notes.append({
+                                    'content': text,
+                                    'timestamp': '',
+                                    'author': ''
+                                })
+                        except:
+                            continue
+                
+                details['notes'] = notes[:5]  # 最多保存5条Notes
+                self.logger.info(f"提取到 {len(notes)} 条Notes")
+                
+            except Exception as e:
+                self.logger.warning(f"提取Notes失败: {str(e)}")
+            
+            # 4. 尝试抓取其他可能的详情信息
+            try:
+                # 查找可能包含详情信息的其他区域
+                other_details = {}
+                
+                # 尝试获取优先级
+                priority_selectors = [
+                    "select[ng-model='opportunity.Priority']",
+                    "select[name='Priority']",
+                    ".priority-field",
+                    "#priority"
+                ]
+                
+                for selector in priority_selectors:
+                    try:
+                        priority_element = self.driver.find_element(By.CSS_SELECTOR, selector)
+                        priority = priority_element.get_attribute("value") or priority_element.text.strip()
+                        if priority:
+                            other_details['priority'] = priority
+                            break
+                    except:
+                        continue
+                
+                details.update(other_details)
+                
+            except Exception as e:
+                self.logger.warning(f"提取其他详情信息失败: {str(e)}")
+            
+            self.logger.info(f"机会详情抓取完成: 描述={len(details['description'])}字符, 客户留言={len(details['customerMessages'])}条, Notes={len(details['notes'])}条")
+            return details
+            
+        except Exception as e:
+            self.logger.error(f"抓取机会详情失败: {str(e)}")
+            self.logger.exception("详细错误信息:")
+            return {
+                'description': '',
+                'customerMessages': [],
+                'notes': []
+            }
+
     def extract_opportunity_data(self, row_element):
         """从行元素中提取机会数据 - 处理Selenium元素"""
         try:
@@ -641,21 +1012,46 @@ class OpportunityScraper:
             link_element = cells[2].find_element(By.TAG_NAME, "a")
             source_url = ''
             if link_element:
-                # 优先从ng-click属性中提取GUID
+                # 记录所有可能的属性用于调试
+                href = link_element.get_attribute("href")
                 ng_click = link_element.get_attribute("ng-click")
-                if ng_click:
-                    # 匹配 edit('guid') 或 openOpportunity('guid') 格式
-                    guid_match = re.search(r"(?:edit|openOpportunity)\(['\"]([^'\"]+)['\"]\)", ng_click)
-                    if guid_match:
-                        guid = guid_match.group(1)
-                        source_url = f"https://beacon.shinetechchina.com.cn/Opportunity/Edit/{guid}"
-                        self.logger.debug(f"从ng-click属性提取到URL: {source_url}")
-                    else:
-                        # 如果无法提取GUID，使用标题作为标识
+                ng_href = link_element.get_attribute("ng-href")
+                ui_sref = link_element.get_attribute("ui-sref")
+                onclick = link_element.get_attribute("onclick")
+                guid = link_element.get_attribute("guid")
+                
+                self.logger.debug(f"链接属性: href={href}, ng-click={ng_click}, ng-href={ng_href}, ui_sref={ui_sref}, onclick={onclick}, guid={guid}")
+                
+                # 优先使用guid属性构造URL
+                if guid:
+                    # 使用实际的网站域名和路径
+                    source_url = f"https://beacon.shinetechchina.com.cn/Opportunity/Edit/{guid}"
+                    self.logger.debug(f"使用guid属性构造URL: {source_url}")
+                # 如果没有guid，尝试从ng-click属性中提取GUID
+                elif ng_click:
+                    # 匹配 edit(item.OpportunityGuid) 格式
+                    if "edit(item.OpportunityGuid)" in ng_click:
+                        # 这种情况下，我们需要从其他地方获取GUID
+                        self.logger.warning(f"找到edit(item.OpportunityGuid)但无法直接获取GUID")
                         source_url = f"https://beacon.shinetechchina.com.cn/Opportunity/Edit/{title}"
                         self.logger.debug(f"使用标题构造URL: {source_url}")
+                    else:
+                        # 尝试匹配其他格式
+                        guid_match = re.search(r"(?:edit|openOpportunity)\(['\"]([^'\"]+)['\"]\)", ng_click)
+                        if guid_match:
+                            guid = guid_match.group(1)
+                            source_url = f"https://beacon.shinetechchina.com.cn/Opportunity/Edit/{guid}"
+                            self.logger.debug(f"从ng-click属性提取到URL: {source_url}")
+                        else:
+                            # 如果无法提取GUID，使用标题作为标识
+                            source_url = f"https://beacon.shinetechchina.com.cn/Opportunity/Edit/{title}"
+                            self.logger.debug(f"使用标题构造URL: {source_url}")
+                elif href:
+                    # 如果有href属性，直接使用
+                    source_url = href
+                    self.logger.debug(f"使用href属性: {source_url}")
                 else:
-                    # 如果没有ng-click属性，使用标题作为标识
+                    # 如果没有其他属性，使用标题作为标识
                     source_url = f"https://beacon.shinetechchina.com.cn/Opportunity/Edit/{title}"
                     self.logger.debug(f"使用标题构造URL: {source_url}")
             

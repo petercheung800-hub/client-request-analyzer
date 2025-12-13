@@ -46,11 +46,38 @@ class OpportunityDB:
                         leadSource TEXT,
                         territoryManager TEXT,
                         salesManager TEXT,
+                        accountOwner TEXT,
                         isProcessed INTEGER DEFAULT 0,
                         analysisId INTEGER,
                         createdAt TEXT NOT NULL,
                         processedAt TEXT,
                         FOREIGN KEY (analysisId) REFERENCES analyses(id)
+                    )
+                ''')
+                
+                # 创建客户留言表
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS customer_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        opportunityId TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        sender TEXT,
+                        timestamp TEXT,
+                        createdAt TEXT NOT NULL,
+                        FOREIGN KEY (opportunityId) REFERENCES opportunities(opportunityId)
+                    )
+                ''')
+                
+                # 创建Notes表
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS opportunity_notes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        opportunityId TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        author TEXT,
+                        timestamp TEXT,
+                        createdAt TEXT NOT NULL,
+                        FOREIGN KEY (opportunityId) REFERENCES opportunities(opportunityId)
                     )
                 ''')
                 
@@ -70,6 +97,10 @@ class OpportunityDB:
                     if 'salesManager' not in columns:
                         conn.execute("ALTER TABLE opportunities ADD COLUMN salesManager TEXT")
                         self.logger.info("已添加salesManager字段")
+                    
+                    if 'accountOwner' not in columns:
+                        conn.execute("ALTER TABLE opportunities ADD COLUMN accountOwner TEXT")
+                        self.logger.info("已添加accountOwner字段")
                 except Exception as e:
                     self.logger.warning(f"添加新字段时出错: {str(e)}")
                     self.logger.exception("详细错误信息:")
@@ -109,7 +140,7 @@ class OpportunityDB:
                                 title = ?, clientName = ?, country = ?, description = ?,
                                 status = ?, priority = ?, postedDate = ?, lastUpdated = ?,
                                 sourceUrl = ?, leadSource = ?, territoryManager = ?, salesManager = ?,
-                                isProcessed = 0
+                                accountOwner = ?, isProcessed = 0
                             WHERE opportunityId = ?
                         ''', (
                             opportunity['title'],
@@ -124,9 +155,47 @@ class OpportunityDB:
                             opportunity.get('leadSource', ''),
                             opportunity.get('territoryManager', ''),
                             opportunity.get('salesManager', ''),
+                            opportunity.get('accountOwner', ''),
                             opportunity['opportunityId']
                         ))
                         self.logger.debug(f"更新完成: {opportunity['opportunityId']}")
+                        
+                        # 删除旧的客户留言和Notes
+                        conn.execute('DELETE FROM customer_messages WHERE opportunityId = ?', (opportunity['opportunityId'],))
+                        conn.execute('DELETE FROM opportunity_notes WHERE opportunityId = ?', (opportunity['opportunityId'],))
+                        
+                        # 保存新的客户留言
+                        if 'customerMessages' in opportunity and opportunity['customerMessages']:
+                            for message in opportunity['customerMessages']:
+                                conn.execute('''
+                                    INSERT INTO customer_messages (
+                                        opportunityId, content, sender, timestamp, createdAt
+                                    ) VALUES (?, ?, ?, ?, ?)
+                                ''', (
+                                    opportunity['opportunityId'],
+                                    message.get('content', ''),
+                                    message.get('sender', ''),
+                                    message.get('timestamp', ''),
+                                    datetime.datetime.now().isoformat()
+                                ))
+                            self.logger.debug(f"保存了 {len(opportunity['customerMessages'])} 条客户留言")
+                        
+                        # 保存新的Notes
+                        if 'notes' in opportunity and opportunity['notes']:
+                            for note in opportunity['notes']:
+                                conn.execute('''
+                                    INSERT INTO opportunity_notes (
+                                        opportunityId, content, author, timestamp, createdAt
+                                    ) VALUES (?, ?, ?, ?, ?)
+                                ''', (
+                                    opportunity['opportunityId'],
+                                    note.get('content', ''),
+                                    note.get('author', ''),
+                                    note.get('timestamp', ''),
+                                    datetime.datetime.now().isoformat()
+                                ))
+                            self.logger.debug(f"保存了 {len(opportunity['notes'])} 条Notes")
+                        
                         return existing['id']
                     except Exception as update_error:
                         self.logger.error(f"更新机会失败 {opportunity['opportunityId']}: {str(update_error)}")
@@ -141,9 +210,9 @@ class OpportunityDB:
                             INSERT INTO opportunities (
                                 opportunityId, title, clientName, country, description,
                                 status, priority, postedDate, lastUpdated, sourceUrl,
-                                leadSource, territoryManager, salesManager,
+                                leadSource, territoryManager, salesManager, accountOwner,
                                 isProcessed, createdAt
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             opportunity['opportunityId'],
                             opportunity['title'],
@@ -158,11 +227,46 @@ class OpportunityDB:
                             opportunity.get('leadSource', ''),
                             opportunity.get('territoryManager', ''),
                             opportunity.get('salesManager', ''),
+                            opportunity.get('accountOwner', ''),
                             0,  # isProcessed
                             now
                         ))
                         self.logger.debug(f"插入完成: {opportunity['opportunityId']}")
-                        return cursor.lastrowid
+                        opportunity_id = cursor.lastrowid
+                        
+                        # 保存客户留言
+                        if 'customerMessages' in opportunity and opportunity['customerMessages']:
+                            for message in opportunity['customerMessages']:
+                                conn.execute('''
+                                    INSERT INTO customer_messages (
+                                        opportunityId, content, sender, timestamp, createdAt
+                                    ) VALUES (?, ?, ?, ?, ?)
+                                ''', (
+                                    opportunity['opportunityId'],
+                                    message.get('content', ''),
+                                    message.get('sender', ''),
+                                    message.get('timestamp', ''),
+                                    now
+                                ))
+                            self.logger.debug(f"保存了 {len(opportunity['customerMessages'])} 条客户留言")
+                        
+                        # 保存Notes
+                        if 'notes' in opportunity and opportunity['notes']:
+                            for note in opportunity['notes']:
+                                conn.execute('''
+                                    INSERT INTO opportunity_notes (
+                                        opportunityId, content, author, timestamp, createdAt
+                                    ) VALUES (?, ?, ?, ?, ?)
+                                ''', (
+                                    opportunity['opportunityId'],
+                                    note.get('content', ''),
+                                    note.get('author', ''),
+                                    note.get('timestamp', ''),
+                                    now
+                                ))
+                            self.logger.debug(f"保存了 {len(opportunity['notes'])} 条Notes")
+                        
+                        return opportunity_id
                     except Exception as insert_error:
                         self.logger.error(f"插入机会失败 {opportunity['opportunityId']}: {str(insert_error)}")
                         self.logger.exception("详细错误信息:")
@@ -220,6 +324,43 @@ class OpportunityDB:
                                 opportunity.get('salesManager', ''),
                                 opportunity['opportunityId']
                             ))
+                            
+                            # 删除旧的客户留言和Notes
+                            conn.execute('DELETE FROM customer_messages WHERE opportunityId = ?', (opportunity['opportunityId'],))
+                            conn.execute('DELETE FROM opportunity_notes WHERE opportunityId = ?', (opportunity['opportunityId'],))
+                            
+                            # 保存新的客户留言
+                            if 'customerMessages' in opportunity and opportunity['customerMessages']:
+                                for message in opportunity['customerMessages']:
+                                    conn.execute('''
+                                        INSERT INTO customer_messages (
+                                            opportunityId, content, sender, timestamp, createdAt
+                                        ) VALUES (?, ?, ?, ?, ?)
+                                    ''', (
+                                        opportunity['opportunityId'],
+                                        message.get('content', ''),
+                                        message.get('sender', ''),
+                                        message.get('timestamp', ''),
+                                        now
+                                    ))
+                                self.logger.debug(f"保存了 {len(opportunity['customerMessages'])} 条客户留言")
+                            
+                            # 保存新的Notes
+                            if 'notes' in opportunity and opportunity['notes']:
+                                for note in opportunity['notes']:
+                                    conn.execute('''
+                                        INSERT INTO opportunity_notes (
+                                            opportunityId, content, author, timestamp, createdAt
+                                        ) VALUES (?, ?, ?, ?, ?)
+                                    ''', (
+                                        opportunity['opportunityId'],
+                                        note.get('content', ''),
+                                        note.get('author', ''),
+                                        note.get('timestamp', ''),
+                                        now
+                                    ))
+                                self.logger.debug(f"保存了 {len(opportunity['notes'])} 条Notes")
+                            
                             updated_count += 1
                             self.logger.info(f"更新机会: {opportunity['opportunityId']} - {opportunity['title']}")
                         else:
@@ -249,6 +390,39 @@ class OpportunityDB:
                                 0,  # isProcessed
                                 now
                             ))
+                            
+                            # 保存客户留言
+                            if 'customerMessages' in opportunity and opportunity['customerMessages']:
+                                for message in opportunity['customerMessages']:
+                                    conn.execute('''
+                                        INSERT INTO customer_messages (
+                                            opportunityId, content, sender, timestamp, createdAt
+                                        ) VALUES (?, ?, ?, ?, ?)
+                                    ''', (
+                                        opportunity['opportunityId'],
+                                        message.get('content', ''),
+                                        message.get('sender', ''),
+                                        message.get('timestamp', ''),
+                                        now
+                                    ))
+                                self.logger.debug(f"保存了 {len(opportunity['customerMessages'])} 条客户留言")
+                            
+                            # 保存Notes
+                            if 'notes' in opportunity and opportunity['notes']:
+                                for note in opportunity['notes']:
+                                    conn.execute('''
+                                        INSERT INTO opportunity_notes (
+                                            opportunityId, content, author, timestamp, createdAt
+                                        ) VALUES (?, ?, ?, ?, ?)
+                                    ''', (
+                                        opportunity['opportunityId'],
+                                        note.get('content', ''),
+                                        note.get('author', ''),
+                                        note.get('timestamp', ''),
+                                        now
+                                    ))
+                                self.logger.debug(f"保存了 {len(opportunity['notes'])} 条Notes")
+                            
                             added_count += 1
                             self.logger.info(f"新增机会: {opportunity['opportunityId']} - {opportunity['title']}")
                     except Exception as e:
