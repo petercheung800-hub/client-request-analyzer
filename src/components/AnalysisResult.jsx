@@ -18,7 +18,11 @@ function AnalysisResult({ analysis, onFollowUpChange }) {
   const [activeFormats, setActiveFormats] = useState({})
   const originalNotesRef = useRef('')
   const [rates, setRates] = useState({});
+  const [days, setDays] = useState({});
   const [totalCost, setTotalCost] = useState(null);
+  const [strategyDescription, setStrategyDescription] = useState(analysis?.strategyDescription || '');
+  const [showStrategyInput, setShowStrategyInput] = useState(false);
+  const strategyTextareaRef = useRef(null);
   
   // 处理单价变化
   const handleRateChange = (index, value) => {
@@ -28,65 +32,200 @@ function AnalysisResult({ analysis, onFollowUpChange }) {
     }));
   };
   
+  // 处理工作天数变化
+  const handleDaysChange = (index, value) => {
+    setDays(prev => ({
+      ...prev,
+      [index]: value
+    }));
+  };
+  
+  // 保存总报价到数据库
+  const saveTotalCostToDatabase = async (totalCost) => {
+    try {
+      // 准备定价详情数据
+      const pricingDetails = {
+        days: days,
+        rates: rates,
+        costTable: data.pricing.costTable.map((item, idx) => {
+          const durationMatch = item.duration.match(/(\d+)/);
+          const defaultDays = durationMatch ? parseInt(durationMatch[1]) : 0;
+          const workDays = parseFloat(days[idx] !== undefined ? days[idx] : defaultDays);
+          const hourlyRate = parseFloat(rates[idx]);
+          return {
+            role: item.role,
+            duration: workDays,
+            hourlyRate: hourlyRate,
+            tasks: item.tasks
+          };
+        })
+      };
+      
+      // 发送请求保存总报价
+      const response = await fetch(`http://localhost:3001/api/analyses/${analysis.id}/total-cost`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          totalCost: totalCost,
+          pricingDetails: pricingDetails
+        })
+      });
+      
+      if (response.ok) {
+        console.log('总报价保存成功');
+      } else {
+        console.error('保存总报价失败:', await response.text());
+      }
+    } catch (error) {
+      console.error('保存总报价失败:', error);
+    }
+  };
+  
+  // 保存策略描述到数据库
+  const saveStrategyDescriptionToDatabase = async (description) => {
+    try {
+      // 发送请求保存策略描述
+      const response = await fetch(`http://localhost:3001/api/analyses/${analysis.id}/strategy-description`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          strategyDescription: description
+        })
+      });
+      
+      if (response.ok) {
+        console.log('策略描述保存成功');
+      } else {
+        console.error('保存策略描述失败:', await response.text());
+      }
+    } catch (error) {
+      console.error('保存策略描述失败:', error);
+    }
+  };
+  
+  // 处理策略描述变化
+  const handleStrategyDescriptionChange = (e) => {
+    setStrategyDescription(e.target.value);
+  };
+  
+  // 自动调整文本框高度
+  const autoAdjustHeight = (textarea) => {
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    }
+  };
+  
+  // 格式化策略描述（去除首尾空格）
+  const formatStrategyDescription = () => {
+    const formatted = strategyDescription.trim();
+    setStrategyDescription(formatted);
+    if (analysis.id) {
+      saveStrategyDescriptionToDatabase(formatted);
+    }
+  };
+  
   // 计算总成本
   const calculateTotalCost = () => {
     let total = 0;
     data.pricing.costTable.forEach((item, idx) => {
-      if (rates[idx]) {
-        // 尝试从工作时长中提取天数
-        const durationMatch = item.duration.match(/(\d+)/);
-        if (durationMatch) {
-          const days = parseInt(durationMatch[1]);
-          // 将天数转换为小时数（假设每天工作8小时）
-          const hours = days * 8;
-          const hourlyRate = parseFloat(rates[idx]);
-          total += hours * hourlyRate;
-        }
+      // 从工作时长中提取天数作为默认值（如果未输入）
+      const durationMatch = item.duration.match(/(\d+)/);
+      const defaultDays = durationMatch ? parseInt(durationMatch[1]) : 0;
+      
+      // 获取工作天数：优先使用用户输入，否则使用默认值
+      const workDays = parseFloat(days[idx] !== undefined ? days[idx] : defaultDays);
+      
+      // 获取单价：使用用户输入，如果未输入则跳过
+      const hourlyRate = parseFloat(rates[idx]);
+      
+      // 只有当单价有效时才计算该角色的成本
+      if (!isNaN(hourlyRate)) {
+        // 将天数转换为小时数（假设每天工作8小时）
+        const hours = workDays * 8;
+        total += hours * hourlyRate;
       }
     });
+    
     setTotalCost(total);
+    
+    // 显示策略描述输入框
+    setShowStrategyInput(true);
+    
+    // 保存总报价到数据库
+    if (analysis.id) {
+      saveTotalCostToDatabase(total);
+    }
   };
     
-    // 使用数据库中的 isFollowUp 值，如果没有则根据可行性分析判断
-  const getInitialFollowUpStatus = () => {
+    // 初始状态设置为true，后续会在useEffect中更新
+  const [isFollowUp, setIsFollowUp] = useState(true)
+  
+  // 使用数据库中的 isFollowUp 值，如果没有则根据可行性分析判断
+  const getInitialFollowUpStatus = (analysisData) => {
+    // 确保传入了analysisData
+    if (!analysisData) return true
+    
     // 优先使用数据库中的值
-    if (analysis?.isFollowUp !== undefined) {
-      return analysis.isFollowUp
+    if (analysisData.isFollowUp !== undefined) {
+      return analysisData.isFollowUp
     }
     // 如果数据库中没有，则根据可行性分析判断
-    if (!analysis?.analysis?.feasibility?.overall) return true
-    const overall = analysis.analysis.feasibility.overall
+    if (!analysisData.analysis?.feasibility?.overall) return true
+    const overall = analysisData.analysis.feasibility.overall
     return overall.includes('可行') && !overall.includes('不可行')
   }
-  
-  const [isFollowUp, setIsFollowUp] = useState(getInitialFollowUpStatus())
 
-  // 当 analysis 改变时，同步 isFollowUp 状态、不跟进原因和问答数据
+  // 当 analysis 改变时，重置并同步所有相关状态
   useEffect(() => {
-    if (analysis?.isFollowUp !== undefined) {
-      setIsFollowUp(analysis.isFollowUp)
-    }
-    if (analysis?.notFollowUpReason) {
-      setNotFollowUpReason(analysis.notFollowUpReason)
-    } else {
-      setNotFollowUpReason('')
-    }
+    // 重置所有状态
+    setActiveTab('analysis')
+    setNotes('')
+    setActiveQuestion(null)
+    setQuestionInput('')
+    setQuestionAnswer(null)
+    setIsLoading(false)
+    setSavedQAs([])
+    setShowSavedToast(false)
+    setEditingIndex(null)
+    setFollowUpIndex(null)
+    setNotFollowUpReason('')
+    setActiveFormats({})
+    setRates({})
+    setDays({})
+    setTotalCost(null)
+    setStrategyDescription('')
+    setShowStrategyInput(false)
+    
+    // 如果没有analysis对象，直接返回
+    if (!analysis) return
+    
+    console.log('📝 AnalysisResult - 加载新的分析记录:', {
+      analysisId: analysis.id,
+      clientName: analysis.clientName
+    })
+    
+    // 同步跟进状态
+    setIsFollowUp(analysis.isFollowUp !== undefined ? analysis.isFollowUp : getInitialFollowUpStatus(analysis))
+    
+    // 同步不跟进原因
+    setNotFollowUpReason(analysis.notFollowUpReason || '')
+    
     // 从数据库加载问答数据
-    if (analysis?.savedQAs) {
+    if (analysis.savedQAs) {
       setSavedQAs(analysis.savedQAs)
       console.log('已加载问答数据:', analysis.savedQAs.length, '条')
     } else {
       setSavedQAs([])
     }
+    
     // 加载笔记
-    console.log('📝 AnalysisResult - 加载笔记:', {
-      analysisId: analysis?.id,
-      hasNotesKey: 'notes' in (analysis || {}),
-      notesValue: analysis?.notes,
-      notesType: typeof analysis?.notes
-    })
-    if (analysis?.notes) {
-      console.log('✅ 设置笔记内容:', analysis.notes)
+    if (analysis.notes) {
+      console.log('✅ 设置笔记内容')
       setNotes(analysis.notes)
       originalNotesRef.current = analysis.notes
       // 设置富文本编辑器的内容
@@ -101,7 +240,35 @@ function AnalysisResult({ analysis, onFollowUpChange }) {
         notesTextareaRef.current.innerHTML = ''
       }
     }
-  }, [analysis?.id])
+    
+    // 从数据库加载定价详情
+    if (analysis.pricingDetails && typeof analysis.pricingDetails === 'object') {
+      console.log('已加载定价详情:', analysis.pricingDetails)
+      // 恢复工作天数
+      setDays(analysis.pricingDetails.days || {})
+      // 恢复单价
+      setRates(analysis.pricingDetails.rates || {})
+      // 恢复总报价
+      setTotalCost(analysis.totalCost !== null ? analysis.totalCost : null)
+    } else {
+      // 没有定价详情，重置为空对象
+      setDays({})
+      setRates({})
+      setTotalCost(null)
+    }
+    
+    // 从数据库加载策略描述
+    if (analysis.strategyDescription) {
+      console.log('已加载策略描述:', analysis.strategyDescription)
+      setStrategyDescription(analysis.strategyDescription)
+    } else {
+      setStrategyDescription('')
+    }
+    
+    // 设置策略描述输入框显示状态
+    setShowStrategyInput(analysis.totalCost !== null)
+    
+  }, [analysis])
 
   // 当切换到笔记标签时，确保编辑器内容正确显示
   useEffect(() => {
@@ -1007,18 +1174,31 @@ function AnalysisResult({ analysis, onFollowUpChange }) {
                     <thead>
                       <tr>
                         <th>项目角色</th>
-                        <th>工作时长</th>
+                        <th>工作天数</th>
                         <th>单价 ($/小时)</th>
                         <th>工作内容</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {data.pricing.costTable.map((item, idx) => (
-                        <tr key={idx}>
-                          <td>{item.role}</td>
-                          <td>{item.duration}</td>
-                          <td>
-                            <input
+                      {data.pricing.costTable.map((item, idx) => {
+                        // 从工作时长中提取天数作为默认值
+                        const durationMatch = item.duration.match(/(\d+)/);
+                        const defaultDays = durationMatch ? parseInt(durationMatch[1]) : 0;
+                        return (
+                          <tr key={idx}>
+                            <td>{item.role}</td>
+                            <td>
+                              <input
+                                type="number"
+                                className="rate-input"
+                                value={days[idx] || defaultDays}
+                                onChange={(e) => handleDaysChange(idx, e.target.value)}
+                                min="0"
+                                step="1"
+                              />
+                            </td>
+                            <td>
+                              <input
                                 type="number"
                                 className="rate-input"
                                 value={rates[idx] || ''}
@@ -1026,10 +1206,11 @@ function AnalysisResult({ analysis, onFollowUpChange }) {
                                 min="0"
                                 step="1"
                               />
-                          </td>
-                          <td>{item.tasks}</td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td>{item.tasks}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                   <div className="cost-calculation">
@@ -1046,17 +1227,159 @@ function AnalysisResult({ analysis, onFollowUpChange }) {
                       </div>
                     )}
                   </div>
+                  
+                  {/* 策略描述输入框 */}
+                  {showStrategyInput && (
+                    <div className="strategy-description-section">
+                      <h4>报价策略说明</h4>
+                      <textarea
+                        ref={strategyTextareaRef}
+                        className="strategy-description-input"
+                        placeholder="请输入本次报价的策略说明（如定价依据、优惠条件、服务范围等）"
+                        value={strategyDescription}
+                        onChange={(e) => {
+                          handleStrategyDescriptionChange(e);
+                          autoAdjustHeight(e.target);
+                        }}
+                        onBlur={formatStrategyDescription}
+                        onFocus={() => {
+                          if (strategyTextareaRef.current) {
+                            autoAdjustHeight(strategyTextareaRef.current);
+                          }
+                        }}
+                        rows="4"
+                        maxLength="2000"
+                      />
+                      <div className="input-info">
+                        <span className="char-count">{strategyDescription.length}/2000</span>
+                        <span className="input-hint">提示：输入完成后点击其他区域自动保存</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* 显示已保存的策略描述 */}
+                  {totalCost !== null && strategyDescription && !showStrategyInput && (
+                    <div className="strategy-description-display">
+                      <h4>报价策略说明</h4>
+                      <div className="strategy-content">
+                        {strategyDescription.split('\n').map((line, idx) => (
+                          <p key={idx}>{line}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
-            {data.pricing.breakdown && (
+            {data.pricing.breakdown && data.pricing.breakdown.server && (
               <div className="pricing-breakdown">
-                <h4>其他成本</h4>
-                <ul>
-                  {data.pricing.breakdown.server && (
-                    <li><strong>服务器成本：</strong>{data.pricing.breakdown.server}</li>
-                  )}
-                </ul>
+                <h4>服务器成本明细</h4>
+                <div className="cost-table-container">
+                  {/* 解析服务器成本数据 */}
+                  {(() => {
+                    let services = [];
+                    let firstYearEstimate = '';
+                    let note = '';
+                    
+                    if (typeof data.pricing.breakdown.server === 'string') {
+                      // 字符串格式，解析成本信息
+                      const costString = data.pricing.breakdown.server;
+                      const parts = costString.split('，');
+                      
+                      // 提取各项服务成本
+                      parts.forEach(part => {
+                        if (part.includes('AWS EC2')) {
+                          services.push({
+                            name: 'AWS EC2',
+                            cost: part.replace(/^服务器成本：?/, '').trim()
+                          });
+                        } else if (part.includes('RDS')) {
+                          services.push({
+                            name: 'RDS',
+                            cost: part.trim()
+                          });
+                        } else if (part.includes('S3')) {
+                          services.push({
+                            name: 'S3',
+                            cost: part.trim()
+                          });
+                        } else if (part.includes('CDN流量费')) {
+                          services.push({
+                            name: 'CDN流量费',
+                            cost: part.trim()
+                          });
+                        } else if (part.includes('首年预估')) {
+                          firstYearEstimate = part.replace(/^服务器成本：?/, '').trim();
+                        } else if (part.includes('基于初始流量')) {
+                          note = part.trim();
+                        }
+                      });
+                    } else if (typeof data.pricing.breakdown.server === 'object') {
+                      // 结构化数据，转换为简化格式
+                      services = Object.entries(data.pricing.breakdown.server).map(([name, cost]) => ({
+                        name,
+                        cost: typeof cost === 'object' ? 
+                          `${cost.amount} ${cost.billingCycle || ''}` : 
+                          cost
+                      }));
+                    }
+                    
+                    return (
+                      <>
+                        {/* 简化的服务器成本表格 */}
+                        <table className="cost-table server-cost-simple">
+                          <thead>
+                            <tr>
+                              <th>服务器项目名称</th>
+                              <th>费用信息</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {/* 默认服务列表 */}
+                            {services.length === 0 && (
+                              <>
+                                <tr>
+                                  <td>AWS EC2</td>
+                                  <td className="amount-right">t3.medium $50-80/月</td>
+                                </tr>
+                                <tr>
+                                  <td>RDS</td>
+                                  <td className="amount-right">$100-150/月</td>
+                                </tr>
+                                <tr>
+                                  <td>S3</td>
+                                  <td className="amount-right">$20-50/月</td>
+                                </tr>
+                                <tr>
+                                  <td>CDN流量费</td>
+                                  <td className="amount-right">$0.15-0.25/GB</td>
+                                </tr>
+                              </>
+                            )}
+                            {/* 实际服务列表 */}
+                            {services.map((service, idx) => (
+                              <tr key={idx}>
+                                <td>{service.name}</td>
+                                <td className="amount-right">{service.cost}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        
+                        {/* 首年预估费用和说明 */}
+                        <div className="first-year-estimate">
+                          <div className="estimate-amount">
+                            <strong>首年预估费用：</strong>
+                            {firstYearEstimate || '$2,000 - $3,000'}
+                          </div>
+                          <div className="estimate-note">
+                            {note || '基于初始流量和扩展需求'}
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
             )}
             {data.pricing.factors && data.pricing.factors.length > 0 && (

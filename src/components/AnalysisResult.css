@@ -708,20 +708,305 @@
   max-width: 300px;
 }
 
-/* 小时单价输入框样式 */
+/* 小时单价和工作天数输入框样式 */
 .rate-input {
   width: 100%;
+  height: auto;
   padding: 0.5rem;
+  margin: 0;
   border: 1px solid #d1d5db;
   border-radius: 4px;
+  font-family: inherit;
   font-size: 0.875rem;
-  transition: border-color 0.15s;
+  line-height: 1.2;
+  text-align: left;
+  background-color: #ffffff;
+  color: #111827;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .rate-input:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  background-color: #ffffff;
+}
+
+.rate-input::placeholder {
+  color: #9ca3af;
+}
+
+/* 确保两个输入框所在的单元格样式一致 */
+.cost-table td:nth-child(2),
+.cost-table td:nth-child(3) {
+  width: 120px;
+  text-align: left;
+}
+
+/* 服务器成本表格样式 */
+.server-cost-table th {
+  font-weight: bold;
+  background-color: #f1f5f9;
+}
+
+.server-cost-table td.amount-right {
+  text-align: right;
+  font-weight: 500;
+  color: #2563eb;
+}
+
+/* 服务器成本表格列宽调整 */
+.server-cost-table td:nth-child(1) {
+  width: 150px;
+  font-weight: 600;
+}
+
+.server-cost-table td:nth-child(2) {
+  width: 120px;
+}
+
+.server-cost-table td:nth-child(3) {
+  width: 120px;
+}
+
+.server-cost-table td:nth-child(4) {
+  width: 100px;
+}
+
+.server-cost-table td:nth-child(5) {
+  width: 150px;
+}
+
+/* 服务器之间的分隔线 */
+.server-cost-table tbody tr:not(:first-child) td {
+  border-top: 1px solid #e2e8f0;
+}
+
+/* 表头样式增强 */
+.server-cost-table th {
+  padding: 1rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* 策略描述样式 */
+.strategy-description-section {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background-color: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.strategy-description-section h4 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #1e293b;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.strategy-description-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  font-family: inherit;
+  resize: none;
+  background-color: #ffffff;
+  color: #1e293b;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.strategy-description-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  background-color: #ffffff;
+}
+
+.strategy-description-input::placeholder {
+  color: #9ca3af;
+}
+
+.strategy-description-input:hover {
+  border-color: #9ca3af;
+}
+
+/* 输入信息样式 */
+.input-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.char-count {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.input-hint {
+  color: #9ca3af;
+}
+
+/* 策略描述显示样式 */
+.strategy-description-display {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background-color: #f0fdf4;
+  border-radius: 8px;
+  border: 1px solid #bbf7d0;
+}
+
+.strategy-description-display h4 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #166534;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.strategy-content {
+  color: #15803d;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.strategy-content p {
+  margin: 0.5rem 0;
+}
+
+.strategy-content p:first-child {
+  margin-top: 0;
+}
+
+.strategy-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .strategy-description-section,
+  .strategy-description-display {
+    padding: 1rem;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    border-radius: 0;
+  }
+  
+  .input-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  
+  .input-hint {
+    font-size: 0.75rem;
+  }
+}
+
+/* 简化服务器成本表格样式 */
+.server-cost-simple {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  font-size: 0.9rem;
+}
+
+.server-cost-simple th {
+  font-weight: bold;
+  background-color: #f1f5f9;
+  color: #334155;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.server-cost-simple td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
+}
+
+.server-cost-simple tr:last-child td {
+  border-bottom: none;
+}
+
+.server-cost-simple tr:hover {
+  background-color: #f8fafc;
+}
+
+.server-cost-simple td:first-child {
+  font-weight: 600;
+  color: #1e293b;
+  width: 150px;
+}
+
+.server-cost-simple td:nth-child(2) {
+  color: #2563eb;
+  font-weight: 500;
+  text-align: left;
+}
+
+/* 首年预估费用样式 */
+.first-year-estimate {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  background-color: #f0fdf4;
+  border-radius: 8px;
+  border-left: 4px solid #22c55e;
+}
+
+.estimate-amount {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #166534;
+  margin-bottom: 0.5rem;
+}
+
+.estimate-note {
+  font-size: 0.875rem;
+  color: #15803d;
+  font-style: italic;
+}
+
+/* 移动端适配 */
+@media (max-width: 480px) {
+  .strategy-description-input {
+    font-size: 0.875rem;
+    padding: 0.625rem;
+  }
+  
+  .strategy-description-section h4,
+  .strategy-description-display h4 {
+    font-size: 0.9375rem;
+  }
+  
+  .server-cost-simple {
+    font-size: 0.8rem;
+  }
+  
+  .server-cost-simple th,
+  .server-cost-simple td {
+    padding: 0.5rem 0.75rem;
+  }
+  
+  .server-cost-simple td:first-child {
+    width: 120px;
+  }
+  
+  .first-year-estimate {
+    padding: 1rem;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    border-radius: 0;
+  }
 }
 
 /* 成本计算区域样式 */

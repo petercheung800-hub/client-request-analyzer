@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { analyzeRequest } from './analyzer.js';
-import { initDatabase, saveAnalysis, getAnalyses, getAnalysisById, deleteAnalysis, deleteAnalysesByClientName, getAnalysisByClientName, updateFollowUpStatus, updateSavedQAs, updateNotes } from './database.js';
+import { initDatabase, saveAnalysis, getAnalyses, getAnalysisById, deleteAnalysis, deleteAnalysesByClientName, getAnalysisByClientName, updateFollowUpStatus, updateSavedQAs, updateNotes, updateTotalCost, updateStrategyDescription } from './database.js';
 
 dotenv.config();
 
@@ -184,6 +184,48 @@ app.put('/api/analyses/:id/qas', (req, res) => {
   } catch (error) {
     console.error('保存问答数据错误:', error);
     res.status(500).json({ error: '保存失败', message: error.message });
+  }
+});
+
+// 更新总报价
+app.put('/api/analyses/:id/total-cost', (req, res) => {
+  try {
+    const { totalCost, pricingDetails } = req.body;
+    console.log(`更新总报价 - ID: ${req.params.id}, 总报价: ${totalCost}`);
+    
+    const success = updateTotalCost(parseInt(req.params.id), totalCost, pricingDetails || {});
+    
+    if (!success) {
+      console.error('记录未找到:', req.params.id);
+      return res.status(404).json({ error: '记录未找到' });
+    }
+    
+    console.log('总报价更新成功');
+    res.json({ success: true });
+  } catch (error) {
+    console.error('更新总报价错误:', error);
+    res.status(500).json({ error: '更新失败', message: error.message });
+  }
+});
+
+// 更新策略描述
+app.put('/api/analyses/:id/strategy-description', (req, res) => {
+  try {
+    const { strategyDescription } = req.body;
+    console.log(`更新策略描述 - ID: ${req.params.id}`);
+    
+    const success = updateStrategyDescription(parseInt(req.params.id), strategyDescription || '');
+    
+    if (!success) {
+      console.error('记录未找到:', req.params.id);
+      return res.status(404).json({ error: '记录未找到' });
+    }
+    
+    console.log('策略描述更新成功');
+    res.json({ success: true });
+  } catch (error) {
+    console.error('更新策略描述错误:', error);
+    res.status(500).json({ error: '更新失败', message: error.message });
   }
 });
 

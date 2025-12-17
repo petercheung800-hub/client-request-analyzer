@@ -27,6 +27,9 @@ export function initDatabase() {
     const hasFollowUpColumn = tableInfo.some(col => col.name === 'isFollowUp');
     const hasReasonColumn = tableInfo.some(col => col.name === 'notFollowUpReason');
     const hasQAsColumn = tableInfo.some(col => col.name === 'savedQAs');
+    const hasTotalCostColumn = tableInfo.some(col => col.name === 'totalCost');
+    const hasPricingDetailsColumn = tableInfo.some(col => col.name === 'pricingDetails');
+    const hasStrategyDescriptionColumn = tableInfo.some(col => col.name === 'strategyDescription');
     
     if (!hasCountryColumn) {
       db.exec(`ALTER TABLE analyses ADD COLUMN country TEXT DEFAULT ''`);
@@ -52,6 +55,23 @@ export function initDatabase() {
     if (!hasNotesColumn) {
       db.exec(`ALTER TABLE analyses ADD COLUMN notes TEXT DEFAULT ''`);
       console.log('已添加 notes 列到数据库');
+    }
+    
+    // 添加总报价相关字段
+    if (!hasTotalCostColumn) {
+      db.exec(`ALTER TABLE analyses ADD COLUMN totalCost REAL DEFAULT NULL`);
+      console.log('已添加 totalCost 列到数据库');
+    }
+    
+    if (!hasPricingDetailsColumn) {
+      db.exec(`ALTER TABLE analyses ADD COLUMN pricingDetails TEXT DEFAULT '{}'`);
+      console.log('已添加 pricingDetails 列到数据库');
+    }
+    
+    // 添加策略描述字段
+    if (!hasStrategyDescriptionColumn) {
+      db.exec(`ALTER TABLE analyses ADD COLUMN strategyDescription TEXT DEFAULT ''`);
+      console.log('已添加 strategyDescription 列到数据库');
     }
   } catch (error) {
     console.error('检查/添加列时出错:', error);
@@ -99,6 +119,9 @@ export function getAnalyses() {
     notFollowUpReason: row.notFollowUpReason || '',
     savedQAs: row.savedQAs ? JSON.parse(row.savedQAs) : [],
     notes: row.notes || '',
+    totalCost: row.totalCost !== null ? row.totalCost : null,
+    pricingDetails: row.pricingDetails ? JSON.parse(row.pricingDetails) : {},
+    strategyDescription: row.strategyDescription || '',
     createdAt: row.createdAt
   }));
 }
@@ -121,6 +144,18 @@ export function updateNotes(id, notes) {
   return result.changes > 0;
 }
 
+export function updateTotalCost(id, totalCost, pricingDetails = {}) {
+  const stmt = db.prepare('UPDATE analyses SET totalCost = ?, pricingDetails = ? WHERE id = ?');
+  const result = stmt.run(totalCost, JSON.stringify(pricingDetails), id);
+  return result.changes > 0;
+}
+
+export function updateStrategyDescription(id, strategyDescription) {
+  const stmt = db.prepare('UPDATE analyses SET strategyDescription = ? WHERE id = ?');
+  const result = stmt.run(strategyDescription, id);
+  return result.changes > 0;
+}
+
 export function getAnalysisById(id) {
   const stmt = db.prepare('SELECT * FROM analyses WHERE id = ?');
   const row = stmt.get(id);
@@ -137,6 +172,9 @@ export function getAnalysisById(id) {
     notFollowUpReason: row.notFollowUpReason || '',
     savedQAs: row.savedQAs ? JSON.parse(row.savedQAs) : [],
     notes: row.notes || '',
+    totalCost: row.totalCost !== null ? row.totalCost : null,
+    pricingDetails: row.pricingDetails ? JSON.parse(row.pricingDetails) : {},
+    strategyDescription: row.strategyDescription || '',
     createdAt: row.createdAt
   };
 }
